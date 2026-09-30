@@ -1,4 +1,4 @@
-package com.vini.typeahead.web;
+package com.vini.typeahead.controller;
 
 import org.springframework.web.bind.annotation.*;
 import java.util.*;
