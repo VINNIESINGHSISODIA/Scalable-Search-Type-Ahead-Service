@@ -4,10 +4,13 @@ import com.vini.typeahead.entity.Suggestion;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
-//HM2 access — the top-5 query
+import java.util.Optional;
+
 public interface SuggestionRepository extends JpaRepository<Suggestion, Long> {
 
-    // Spring Data reads this method NAME and generates the query:
-    // SELECT * FROM suggestion WHERE prefix = ? ORDER BY frequency DESC LIMIT 5
+    // READ path (Stage 2/3): top-5 for a prefix
     List<Suggestion> findTop5ByPrefixOrderByFrequencyDesc(String prefix);
+
+    // WRITE path (Stage 4): find an existing (prefix, term) row to update during flush
+    Optional<Suggestion> findByPrefixAndTerm(String prefix, String term);
 }
