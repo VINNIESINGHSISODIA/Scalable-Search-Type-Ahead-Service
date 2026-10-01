@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Type-Ahead Demo</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0;
+            display: flex; justify-content: center; padding-top: 12vh; }
+        .box { width: 460px; }
+        h1 { font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; color: #94a3b8; }
+        input { width: 100%; padding: 14px 16px; font-size: 1.1rem; border: 1px solid #334155;
+            border-radius: 10px; background: #1e293b; color: #f8fafc; outline: none; box-sizing: border-box; }
+        input:focus { border-color: #6366f1; }
+        ul { list-style: none; margin: 6px 0 0; padding: 0; background: #1e293b;
+            border: 1px solid #334155; border-radius: 10px; overflow: hidden; }
+        li { padding: 11px 16px; cursor: pointer; }
+        li:hover { background: #334155; }
+        .hint { margin-top: 10px; font-size: .8rem; color: #64748b; }
+    </style>
+</head>
+<body>
+<div class="box">
+    <h1>Search Type-Ahead</h1>
+    <input id="q" type="text" placeholder="Start typing (suggestions from 3rd char)..." autocomplete="off" autofocus>
+    <ul id="list"></ul>
+    <div class="hint">Type ≥3 chars for suggestions. Click one or press Enter to record a search.</div>
+</div>
+
+<script>
+    const input = document.getElementById('q');
+    const list = document.getElementById('list');
+    let timer;
+
+    input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(fetchSuggestions, 120);   // debounce
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && input.value.trim()) recordSearch(input.value.trim());
+    });
+
+    async function fetchSuggestions() {
+        const prefix = input.value.trim();
+        if (prefix.length < 3) { list.innerHTML = ''; return; }
+        const res = await fetch('/api/v1/suggestions?prefix=' + encodeURIComponent(prefix));
+        const items = await res.json();
+        list.innerHTML = items.map(s => `<li>${s}</li>`).join('');
+        list.querySelectorAll('li').forEach(li =>
+            li.onclick = () => { input.value = li.textContent; recordSearch(li.textContent); list.innerHTML = ''; });
+    }
+
+    async function recordSearch(query) {
+        await fetch('/api/v1/frequency', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+        });
+    }
+</script>
+</body>
+</html>
