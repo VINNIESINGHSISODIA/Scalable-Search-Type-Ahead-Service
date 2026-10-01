@@ -1,5 +1,6 @@
 package com.vini.typeahead.controller;
 
+import com.vini.typeahead.scheduler.TimeDecayJob;
 import com.vini.typeahead.service.FrequencyService;
 import com.vini.typeahead.service.SuggestionService;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,7 @@ public class SuggestionController {
 
     private final SuggestionService suggestionService;
     private final FrequencyService frequencyService;
+    private final TimeDecayJob timeDecayJob;      // <-- added here
 
     // READ path
     @GetMapping("/suggestions")
@@ -31,5 +33,12 @@ public class SuggestionController {
                 "query", query == null ? "" : query,
                 "outcome", outcome.name()
         );
+    }
+
+    // ADMIN — manual time-decay trigger (for demo)
+    @PostMapping("/admin/decay")
+    public String runDecay() {
+        timeDecayJob.decay();
+        return "time decay applied";
     }
 }
