@@ -61,3 +61,43 @@
 </script>
 </body>
 </html>
+<!--Let me break down these three lines — they implement **debouncing** (waiting until you pause typing before calling the API).-->
+
+<!--```javascript-->
+<!--input.addEventListener('input', () => {-->
+<!--clearTimeout(timer);-->
+<!--timer = setTimeout(fetchSuggestions, 120);-->
+<!--});-->
+<!--```-->
+
+<!--**Line 1 — `input.addEventListener('input', () => {...})`**-->
+<!--"Every time the input box's value changes (any character typed or deleted), run this function." The `'input'` event fires on *every single keystroke*.-->
+
+<!--**Line 3 — `setTimeout(fetchSuggestions, 120)`**-->
+<!--"Don't call `fetchSuggestions` right now — wait **120 milliseconds**, then call it." `setTimeout` schedules a function for later and returns a **timer ID**, which we store in `timer`.-->
+
+<!--**Line 2 — `clearTimeout(timer)`**-->
+<!--"Cancel the previously scheduled call (if one is still waiting)." This runs *before* scheduling a new one.-->
+
+<!--**How they work together — the debounce:**-->
+
+<!--Imagine you type "mic" quickly:-->
+
+<!--```-->
+<!--type 'm'  → clear (nothing to clear) → schedule call in 120ms  ⏱-->
+<!--type 'i'  → CANCEL the 'm' call      → schedule NEW call in 120ms  ⏱ (restarts the clock)-->
+<!--type 'c'  → CANCEL the 'i' call      → schedule NEW call in 120ms  ⏱ (restarts again)-->
+<!--(you pause) → 120ms passes with no new keystroke → fetchSuggestions() finally runs ONCE-->
+<!--```-->
+
+<!--Each keystroke **cancels the pending call and restarts the 120ms clock**. The API only gets called when you **stop typing for 120ms**.-->
+
+<!--**Why bother?**-->
+<!--Without debounce, typing "microsoft" (9 letters fast) fires **9 API calls** in a fraction of a second — 8 of them instantly thrown away as you keep typing. That's wasted load on your server, Redis, and Postgres. With debounce, it fires **once** (or a couple of times if you type slowly). Every real search bar (Google, Amazon) does this.-->
+
+<!--**The tradeoff — the 120 number:**-->
+<!-- - **Too high** (say 500ms) → suggestions feel laggy; you've stopped typing but the dropdown hasn't caught up.-->
+<!-- - **Too low** (say 20ms) → barely any batching, nearly one call per keystroke.-->
+<!-- - **~100–150ms** is the sweet spot — feels instant to the user but still collapses rapid typing.-->
+
+<!--So those three lines turn "fire on every keystroke" into "fire once the user pauses" — a small, standard, important optimization.-->

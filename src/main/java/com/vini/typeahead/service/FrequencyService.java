@@ -32,7 +32,11 @@ public class FrequencyService {
     @Value("${typeahead.write.sampling-rate}")
     private double samplingRate;
 
-    public enum Outcome { DROPPED_BY_SAMPLING, PENDING, FLUSHED }
+    public enum Outcome {
+        DROPPED_BY_SAMPLING,  // write ignored by the sampling gate (we only count a fraction of searches)
+        PENDING,              // counted in the Redis buffer; not yet written to the DB (below threshold)
+        FLUSHED               // threshold reached; flushed to Postgres (HM1 + HM2) and cache invalidated
+    }
 
     public Outcome recordSearch(String rawTerm) {
         String term = rawTerm == null ? "" : rawTerm.trim().toLowerCase();

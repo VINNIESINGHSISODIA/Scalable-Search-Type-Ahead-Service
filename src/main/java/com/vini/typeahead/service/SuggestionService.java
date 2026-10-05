@@ -24,7 +24,7 @@ public class SuggestionService {
     private final StringRedisTemplate redis;   // auto-configured by Spring Boot
 
     public List<String> getSuggestions(String prefix) {
-        String p = prefix == null ? "" : prefix.trim().toLowerCase();
+        String p = prefix == null ? "" : prefix.trim().toLowerCase(); //trim() removes all whitespaces from start and end, keeps spaces if in middle
 
         // Rule: nothing before the 3rd character
         if (p.length() < MIN_PREFIX) {
@@ -42,7 +42,7 @@ public class SuggestionService {
 
         // 2) Cache miss — read HM2 from Postgres
         System.out.println("CACHE MISS -> " + p);
-        List<Suggestion> rows = suggestionRepo.findTop5ByPrefixOrderByFrequencyDesc(p);
+        List<Suggestion> rows = suggestionRepo.findByPrefixOrderByFrequencyDesc(p);   // was findTop5By...
 
         // 3) Populate the cache: ZADD each term with score = frequency, then set a TTL
         for (Suggestion s : rows) {

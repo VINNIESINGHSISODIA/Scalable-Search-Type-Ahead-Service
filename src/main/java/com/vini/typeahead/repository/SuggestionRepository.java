@@ -12,7 +12,7 @@ import java.util.Optional;
 public interface SuggestionRepository extends JpaRepository<Suggestion, Long> {
 
     // READ: top-5 for a prefix
-    List<Suggestion> findTop5ByPrefixOrderByFrequencyDesc(String prefix);
+    List<Suggestion> findByPrefixOrderByFrequencyDesc(String prefix);
 
     // WRITE / promotion helpers
     Optional<Suggestion> findByPrefixAndTerm(String prefix, String term);
