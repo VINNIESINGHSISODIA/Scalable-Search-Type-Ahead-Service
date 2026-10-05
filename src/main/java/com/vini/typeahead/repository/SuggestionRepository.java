@@ -11,12 +11,15 @@ import java.util.Optional;
 
 public interface SuggestionRepository extends JpaRepository<Suggestion, Long> {
 
-    // READ path (Stage 2/3): top-5 for a prefix
+    // READ: top-5 for a prefix
     List<Suggestion> findTop5ByPrefixOrderByFrequencyDesc(String prefix);
 
-    // WRITE path (Stage 4): find an existing (prefix, term) row to update during flush
+    // WRITE / promotion helpers
     Optional<Suggestion> findByPrefixAndTerm(String prefix, String term);
+    long countByPrefix(String prefix);
+    Optional<Suggestion> findFirstByPrefixOrderByFrequencyAsc(String prefix);  // the weakest of the stored 5
 
+    // TIME DECAY
     @Modifying(clearAutomatically = true)
     @Query(value = "UPDATE suggestion SET frequency = floor(frequency / :factor)", nativeQuery = true)
     int applyTimeDecay(@Param("factor") double factor);

@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Service
@@ -17,8 +18,9 @@ import java.util.concurrent.ThreadLocalRandom;
 public class FrequencyService {
 
     private static final int MIN_PREFIX = 3;
-    private static final String PENDING_KEY = "ta:pending";   // Redis hash: term -> pending count
-    private static final String CACHE_PREFIX = "ta:sug:";      // read-cache keys to invalidate
+    private static final int TOP_N = 5;
+    private static final String PENDING_KEY = "ta:pending";
+    private static final String CACHE_PREFIX = "ta:sug:";
 
     private final StringRedisTemplate redis;
     private final SearchTermRepository termRepo;
@@ -32,24 +34,20 @@ public class FrequencyService {
 
     public enum Outcome { DROPPED_BY_SAMPLING, PENDING, FLUSHED }
 
-    /** Called once per completed search (on Enter). */
     public Outcome recordSearch(String rawTerm) {
         String term = rawTerm == null ? "" : rawTerm.trim().toLowerCase();
-        if (term.isEmpty()) {
-            return Outcome.DROPPED_BY_SAMPLING;
-        }
+        if (term.isEmpty()) return Outcome.DROPPED_BY_SAMPLING;
 
-        // 1) Sampling gate — accept only ~samplingRate of writes
+        // Sampling gate
         if (ThreadLocalRandom.current().nextDouble() >= samplingRate) {
             System.out.println("DROPPED (sampling) -> " + term);
             return Outcome.DROPPED_BY_SAMPLING;
         }
 
-        // 2) Bump the pending counter in Redis (fast, NO database write yet)
+        // Pending counter (Redis) — no DB write yet
         Long pending = redis.opsForHash().increment(PENDING_KEY, term, 1L);
         System.out.println("PENDING " + pending + "/" + threshold + " -> " + term);
 
-        // 3) Threshold check — only now do we touch the database
         if (pending != null && pending >= threshold) {
             flushTerm(term);
             return Outcome.FLUSHED;
@@ -57,37 +55,55 @@ public class FrequencyService {
         return Outcome.PENDING;
     }
 
-    /** Flush a term: update HM1, refresh its HM2 rows, invalidate the read cache. */
     @Transactional
     public void flushTerm(String term) {
         Object raw = redis.opsForHash().get(PENDING_KEY, term);
         long delta = raw == null ? 0 : Long.parseLong(raw.toString());
-        if (delta <= 0) {
-            return;
-        }
+        if (delta <= 0) return;
 
-        // reset the pending bucket first
         redis.opsForHash().put(PENDING_KEY, term, "0");
 
-        // 1) HM1: term -> frequency  (+= delta, create if new)
+        // 1) HM1 — the FULL frequency universe: EVERY term lives here
         SearchTerm st = termRepo.findById(term).orElse(new SearchTerm(term, 0));
         st.setFrequency(st.getFrequency() + delta);
         termRepo.save(st);
         long newFreq = st.getFrequency();
 
-        // 2) HM2: update this term's frequency across all its prefixes,
-        //    and invalidate the read cache for each so next read repopulates
+        // 2) HM2 — keep EXACTLY the top-5 per prefix (promotion logic)
         for (int len = MIN_PREFIX; len <= term.length(); len++) {
             String prefix = term.substring(0, len);
-
-            Suggestion s = suggestionRepo.findByPrefixAndTerm(prefix, term)
-                    .orElse(new Suggestion(prefix, term, 0));
-            s.setFrequency(newFreq);
-            suggestionRepo.save(s);
-
-            redis.delete(CACHE_PREFIX + prefix);   // cache invalidation
+            updatePrefixTop5(prefix, term, newFreq);
+            redis.delete(CACHE_PREFIX + prefix);   // invalidate read cache
         }
 
         System.out.println("FLUSHED '" + term + "'  (+" + delta + " -> " + newFreq + ")");
+    }
+
+    /** Maintain the top-5 for ONE prefix when `term` reaches `newFreq`. */
+    private void updatePrefixTop5(String prefix, String term, long newFreq) {
+        // a) already among the stored 5 -> just refresh its frequency
+        Optional<Suggestion> existing = suggestionRepo.findByPrefixAndTerm(prefix, term);
+        if (existing.isPresent()) {
+            Suggestion s = existing.get();
+            s.setFrequency(newFreq);
+            suggestionRepo.save(s);
+            return;
+        }
+
+        // b) fewer than 5 stored -> room, just insert
+        if (suggestionRepo.countByPrefix(prefix) < TOP_N) {
+            suggestionRepo.save(new Suggestion(prefix, term, newFreq));
+            return;
+        }
+
+        // c) top-5 full -> promote ONLY if better than the weakest
+        Suggestion weakest = suggestionRepo.findFirstByPrefixOrderByFrequencyAsc(prefix).orElse(null);
+        if (weakest != null && newFreq > weakest.getFrequency()) {
+            suggestionRepo.delete(weakest);                              // demote (still safe in HM1!)
+            suggestionRepo.save(new Suggestion(prefix, term, newFreq));  // promote
+            System.out.println("  PROMOTED '" + term + "' into '" + prefix
+                    + "' top-5, demoted '" + weakest.getTerm() + "'");
+        }
+        // else: not good enough for this prefix — do nothing
     }
 }

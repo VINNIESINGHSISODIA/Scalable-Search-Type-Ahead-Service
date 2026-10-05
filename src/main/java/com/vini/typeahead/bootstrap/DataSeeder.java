@@ -10,12 +10,13 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
-//seeds HM1, derives HM2
+
 @Component
-@RequiredArgsConstructor     // Lombok generates the constructor for the final fields
+@RequiredArgsConstructor
 public class DataSeeder implements ApplicationRunner {
 
     private static final int MIN_PREFIX = 3;
+    private static final int TOP_N = 5;
 
     private final SearchTermRepository termRepo;
     private final SuggestionRepository suggestionRepo;
@@ -50,19 +51,27 @@ public class DataSeeder implements ApplicationRunner {
             return;
         }
 
-        // 1) Seed HM1 (term -> frequency)
+        // 1) HM1 — every term
         SEED.forEach((term, freq) -> termRepo.save(new SearchTerm(term, freq)));
 
-        // 2) Derive HM2 — every prefix of length >= 3 for each term
-        List<Suggestion> rows = new ArrayList<>();
+        // 2) HM2 — compute top-5 per prefix
+        Map<String, List<Suggestion>> byPrefix = new HashMap<>();
         SEED.forEach((term, freq) -> {
             for (int len = MIN_PREFIX; len <= term.length(); len++) {
-                rows.add(new Suggestion(term.substring(0, len), term, freq));
+                String prefix = term.substring(0, len);
+                byPrefix.computeIfAbsent(prefix, k -> new ArrayList<>())
+                        .add(new Suggestion(prefix, term, freq));
             }
         });
+
+        List<Suggestion> rows = new ArrayList<>();
+        for (List<Suggestion> candidates : byPrefix.values()) {
+            candidates.sort(Comparator.comparingLong(Suggestion::getFrequency).reversed());
+            candidates.stream().limit(TOP_N).forEach(rows::add);
+        }
         suggestionRepo.saveAll(rows);
 
         System.out.println("Seeded " + SEED.size() + " terms into HM1 and "
-                + rows.size() + " rows into HM2.");
+                + rows.size() + " rows into HM2 (<=5 per prefix).");
     }
 }
