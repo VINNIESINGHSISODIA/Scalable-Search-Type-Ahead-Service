@@ -41,4 +41,11 @@ public class SuggestionController {
         timeDecayJob.decay();
         return "time decay applied";
     }
+
+    // Shows which app instance handled the request (to see load balancing)
+//    In Docker, each container's HOSTNAME is its unique container ID — so two app instances return different values.
+    @GetMapping("/whoami")
+    public String whoami() {
+        return "served by instance: " + System.getenv().getOrDefault("HOSTNAME", "local");
+    }
 }

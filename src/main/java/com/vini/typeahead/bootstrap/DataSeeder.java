@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.*;
 
@@ -20,6 +21,9 @@ public class DataSeeder implements ApplicationRunner {
 
     private final SearchTermRepository termRepo;
     private final SuggestionRepository suggestionRepo;
+
+    @Value("${typeahead.seed-on-start:true}")
+    private boolean seedOnStart;
 
     private static final Map<String, Long> SEED = new LinkedHashMap<>() {{
         put("microsoft", 101000L);
@@ -46,6 +50,12 @@ public class DataSeeder implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        // Only one instance should seed (avoids a race when multiple replicas start together)
+        if (!seedOnStart) {
+            System.out.println("Seeding disabled for this instance; skipping.");
+            return;
+        }
+
         if (termRepo.count() > 0) {
             System.out.println("Data already seeded, skipping.");
             return;

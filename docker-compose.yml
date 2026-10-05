@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: typeahead
+      POSTGRES_USER: typeahead
+      POSTGRES_PASSWORD: typeahead
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U typeahead"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app1:
+    build: .
+    environment: &app-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/typeahead
+      SPRING_DATASOURCE_USERNAME: typeahead
+      SPRING_DATASOURCE_PASSWORD: typeahead
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      TYPEAHEAD_SEED_ON_START: "true"     # app1 seeds
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  app2:
+    build: .
+    environment:
+      <<: *app-env                          # reuse the shared vars
+      TYPEAHEAD_SEED_ON_START: "false"     # app2 does NOT seed
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8081:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app1
+      - app2
